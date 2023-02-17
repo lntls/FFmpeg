@@ -1941,6 +1941,10 @@ static int64_t http_seek_internal(URLContext *h, int64_t off, int whence, int fo
             return AVERROR(ENOMEM);
         av_free(s->location);
         s->location = new_uri;
+
+        /* Restart the authentication process */
+        memset(&s->auth_state, 0, sizeof(s->auth_state));
+        av_log(h, AV_LOG_DEBUG, "new_uri: %s\n", s->location);
     }
 
     /* we save the old context in case the seek fails */
