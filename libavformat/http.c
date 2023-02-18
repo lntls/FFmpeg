@@ -76,6 +76,7 @@ typedef struct HTTPContext {
     char *uri;
     char *location;
     HTTPAuthState auth_state;
+    HTTPAuthState origin_auth_state;
     HTTPAuthState proxy_auth_state;
     char *http_proxy;
     char *headers;
@@ -377,7 +378,6 @@ redo:
     cur_proxy_auth_type = s->auth_state.auth_type;
 
     off = s->off;
-    av_log(h, AV_LOG_DEBUG, "http_open_cnx_internal: %s\n", s->location);
     ret = http_open_cnx_internal(h, options);
     if (ret < 0) {
         if (!http_should_reconnect(s, ret) ||
@@ -721,6 +721,7 @@ static int http_open(URLContext *h, const char *uri, int flags,
         return http_listen(h, uri, flags, options);
     }
     ret = http_open_cnx(h, options);
+    s->origin_auth_state = s->auth_state;
 bail_out:
     if (ret < 0) {
         av_dict_free(&s->chained_options);
@@ -1430,6 +1431,7 @@ static int http_connect(URLContext *h, const char *path, const char *local_path,
                                                 local_path, method);
     proxyauthstr = ff_http_auth_create_response(&s->proxy_auth_state, proxyauth,
                                                 local_path, method);
+                                                
 
      if (post && !s->post_data) {
         if (s->send_expect_100 != -1) {
@@ -1942,6 +1944,7 @@ static int64_t http_seek_internal(URLContext *h, int64_t off, int whence, int fo
             return AVERROR(ENOMEM);
         av_free(s->location);
         s->location = new_uri;
+        s->auth_state = s->origin_auth_state;
     }
 
     /* we save the old context in case the seek fails */
