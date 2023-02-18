@@ -434,7 +434,7 @@ redo:
         s->location = s->new_location;
         s->new_location = NULL;
 
-        if (redirects < 2) {
+        if (redirects == 1) {
             s->origin_auth_state = s->auth_state;
         }
 
