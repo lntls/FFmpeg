@@ -434,6 +434,10 @@ redo:
         s->location = s->new_location;
         s->new_location = NULL;
 
+        if (redirects < 2) {
+            s->origin_auth_state = s->auth_state;
+        }
+
         /* Restart the authentication process with the new target, which
          * might use a different auth mechanism. */
         memset(&s->auth_state, 0, sizeof(s->auth_state));
@@ -721,7 +725,6 @@ static int http_open(URLContext *h, const char *uri, int flags,
         return http_listen(h, uri, flags, options);
     }
     ret = http_open_cnx(h, options);
-    s->origin_auth_state = s->auth_state;
 bail_out:
     if (ret < 0) {
         av_dict_free(&s->chained_options);
