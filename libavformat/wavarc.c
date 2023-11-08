@@ -22,6 +22,7 @@
 #include "libavutil/channel_layout.h"
 #include "libavutil/intreadwrite.h"
 #include "avformat.h"
+#include "avio_internal.h"
 #include "demux.h"
 #include "internal.h"
 
@@ -69,8 +70,10 @@ static int wavarc_read_header(AVFormatContext *s)
     if (avio_r8(pb))
         return AVERROR_INVALIDDATA;
     id = avio_rl32(pb);
+    w->data_end = avio_tell(pb);
     if (avio_read(pb, data, sizeof(data)) != sizeof(data))
         return AVERROR(EIO);
+    w->data_end += 16LL + AV_RL32(data + 4);
     fmt_len = AV_RL32(data + 32);
     if (fmt_len < 12)
         return AVERROR_INVALIDDATA;
@@ -84,7 +87,9 @@ static int wavarc_read_header(AVFormatContext *s)
     if (ret < 0)
         return ret;
     memcpy(par->extradata, data, sizeof(data));
-    avio_read(pb, par->extradata + sizeof(data), fmt_len);
+    ret = ffio_read_size(pb, par->extradata + sizeof(data), fmt_len);
+    if (ret < 0)
+        return ret;
 
     par->codec_type = AVMEDIA_TYPE_AUDIO;
     par->codec_id   = AV_CODEC_ID_WAVARC;
@@ -95,8 +100,7 @@ static int wavarc_read_header(AVFormatContext *s)
         if (id != MKTAG('d','a','t','a'))
             avio_skip(pb, avio_rl32(pb));
     } while (id != MKTAG('d','a','t','a') && !avio_feof(pb));
-    w->data_end = avio_rl32(pb);
-    w->data_end += avio_tell(pb);
+    avio_skip(pb, 4);
 
     if (AV_RL32(par->extradata + 16) != MKTAG('R','I','F','F'))
         return AVERROR_INVALIDDATA;

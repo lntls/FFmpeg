@@ -72,7 +72,7 @@ static int rka_read_header(AVFormatContext *s)
     if (channels == 0)
         return AVERROR_INVALIDDATA;
     bps = par->extradata[13];
-    if (bps == 0)
+    if (bps < 8)
         return AVERROR_INVALIDDATA;
     size_offset = avio_rl32(s->pb);
     framepos = avio_tell(s->pb);
@@ -114,7 +114,7 @@ static int rka_read_header(AVFormatContext *s)
     par->ch_layout.nb_channels = channels;
     par->sample_rate = samplerate;
     par->bits_per_raw_sample = bps;
-    st->duration = nb_samples / (channels * (bps >> 3));
+    st->duration = 8LL*nb_samples / (channels * bps);
 
     if (s->pb->seekable & AVIO_SEEKABLE_NORMAL)
         ff_ape_parse_tag(s);
