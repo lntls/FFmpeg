@@ -76,6 +76,7 @@ typedef struct MediaCodecEncContext {
 } MediaCodecEncContext;
 
 enum {
+    COLOR_FormatYUV420Flexible                            = 2135042184,
     COLOR_FormatYUV420Planar                              = 0x13,
     COLOR_FormatYUV420SemiPlanar                          = 0x15,
     COLOR_FormatSurface                                   = 0x7F000789,
@@ -85,9 +86,9 @@ static const struct {
     int color_format;
     enum AVPixelFormat pix_fmt;
 } color_formats[] = {
-    { COLOR_FormatYUV420Planar,         AV_PIX_FMT_YUV420P },
-    { COLOR_FormatYUV420SemiPlanar,     AV_PIX_FMT_NV12    },
-    { COLOR_FormatSurface,              AV_PIX_FMT_MEDIACODEC },
+    { COLOR_FormatYUV420Flexible,         AV_PIX_FMT_YUV420P },
+    { COLOR_FormatYUV420Flexible,         AV_PIX_FMT_NV12    },
+    { COLOR_FormatSurface,                AV_PIX_FMT_MEDIACODEC },
 };
 
 static const enum AVPixelFormat avc_pix_fmts[] = {
@@ -250,8 +251,7 @@ static av_cold int mediacodec_init(AVCodecContext *avctx)
 
     for (int i = 0; i < FF_ARRAY_ELEMS(color_formats); i++) {
         if (avctx->pix_fmt == color_formats[i].pix_fmt) {
-            ff_AMediaFormat_setInt32(format, "color-format",
-                                     color_formats[i].color_format);
+            ff_AMediaFormat_setInt32(format, "color-format", color_formats[i].color_format);
             break;
         }
     }
