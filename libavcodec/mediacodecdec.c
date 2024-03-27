@@ -475,7 +475,7 @@ static int mediacodec_receive_frame(AVCodecContext *avctx, AVFrame *frame)
                  */
                 if (ff_AMediaCodec_infoTryAgainLater(s->ctx->codec, index) &&
                     ret == AVERROR(EAGAIN)) {
-                        if (try_count > 30) {
+                        if (try_count > 5) {
                             return ret;
                         }
                         try_count = try_count + 1;
@@ -506,6 +506,7 @@ static int mediacodec_receive_frame(AVCodecContext *avctx, AVFrame *frame)
             if (s->amlogic_mpeg2_api23_workaround && s->buffered_pkt.size <= 0) {
                 /* fallthrough to fetch next packet regardless of input buffer space */
             } else {
+
                 /* poll for space again */
                 continue;
             }
