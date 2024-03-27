@@ -479,7 +479,7 @@ static int mediacodec_receive_frame(AVCodecContext *avctx, AVFrame *frame)
             //         ret == AVERROR(EAGAIN))
             //         continue;
             //     return ret;
-            }
+            // }
             s->ctx->current_input_buffer = index;
         }
 
