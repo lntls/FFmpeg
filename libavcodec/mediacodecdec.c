@@ -506,6 +506,10 @@ static int mediacodec_receive_frame(AVCodecContext *avctx, AVFrame *frame)
             if (s->amlogic_mpeg2_api23_workaround && s->buffered_pkt.size <= 0) {
                 /* fallthrough to fetch next packet regardless of input buffer space */
             } else {
+                if (try_count > 30) {
+                    return ret;
+                }
+                try_count = try_count + 1;
                 /* poll for space again */
                 continue;
             }
