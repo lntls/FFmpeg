@@ -26,10 +26,12 @@
 
 #include "libavcodec/put_bits.h"
 #include "libavformat/avformat.h"
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "libavutil/avstring.h"
 #include "libavutil/file_open.h"
 #include "avfilter.h"
+#include "filters.h"
 #include "internal.h"
 #include "signature.h"
 #include "signature_lookup.c"
@@ -379,6 +381,9 @@ static int xml_export(AVFilterContext *ctx, StreamContext *sc, const char* filen
     FILE* f;
     unsigned int pot3[5] = { 3*3*3*3, 3*3*3, 3*3, 3, 1 };
 
+    if (!sc->coarseend->last)
+        return AVERROR(EINVAL); // No frames ?
+
     f = avpriv_fopen_utf8(filename, "w");
     if (!f) {
         int err = AVERROR(EINVAL);
@@ -722,9 +727,11 @@ static int config_output(AVFilterLink *outlink)
 {
     AVFilterContext *ctx = outlink->src;
     AVFilterLink *inlink = ctx->inputs[0];
+    FilterLink       *il = ff_filter_link(inlink);
+    FilterLink       *ol = ff_filter_link(outlink);
 
     outlink->time_base = inlink->time_base;
-    outlink->frame_rate = inlink->frame_rate;
+    ol->frame_rate = il->frame_rate;
     outlink->sample_aspect_ratio = inlink->sample_aspect_ratio;
     outlink->w = inlink->w;
     outlink->h = inlink->h;

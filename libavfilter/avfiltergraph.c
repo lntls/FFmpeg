@@ -27,8 +27,8 @@
 #include "libavutil/avassert.h"
 #include "libavutil/bprint.h"
 #include "libavutil/channel_layout.h"
-#include "libavutil/hwcontext.h"
 #include "libavutil/imgutils.h"
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
 
@@ -106,7 +106,7 @@ void ff_filter_graph_remove_filter(AVFilterGraph *graph, AVFilterContext *filter
             filter->graph = NULL;
             for (j = 0; j<filter->nb_outputs; j++)
                 if (filter->outputs[j])
-                    filter->outputs[j]->graph = NULL;
+                    ff_filter_link(filter->outputs[j])->graph = NULL;
 
             return;
         }
@@ -794,6 +794,10 @@ static int reduce_formats_on_filter(AVFilterContext *filter)
                    nb_formats, ff_add_format);
     REDUCE_FORMATS(int,      AVFilterFormats,        samplerates,     formats,
                    nb_formats, ff_add_format);
+    REDUCE_FORMATS(int,      AVFilterFormats,        color_spaces,    formats,
+                   nb_formats, ff_add_format);
+    REDUCE_FORMATS(int,      AVFilterFormats,        color_ranges,    formats,
+                   nb_formats, ff_add_format);
 
     /* reduce channel layouts */
     for (i = 0; i < filter->nb_inputs; i++) {
@@ -904,82 +908,6 @@ static void swap_samplerates(AVFilterGraph *graph)
 
     for (i = 0; i < graph->nb_filters; i++)
         swap_samplerates_on_filter(graph->filters[i]);
-}
-
-static void swap_color_spaces_on_filter(AVFilterContext *filter)
-{
-    AVFilterLink *link = NULL;
-    enum AVColorSpace csp;
-    int i;
-
-    for (i = 0; i < filter->nb_inputs; i++) {
-        link = filter->inputs[i];
-        if (link->type == AVMEDIA_TYPE_VIDEO &&
-            link->outcfg.color_spaces->nb_formats == 1)
-            break;
-    }
-    if (i == filter->nb_inputs)
-        return;
-
-    csp = link->outcfg.color_spaces->formats[0];
-
-    for (i = 0; i < filter->nb_outputs; i++) {
-        AVFilterLink *outlink = filter->outputs[i];
-        if (outlink->type != AVMEDIA_TYPE_VIDEO)
-            continue;
-        /* there is no meaningful 'score' between different yuv matrices,
-         * so just prioritize an exact match if it exists */
-        for (int j = 0; j < outlink->incfg.color_spaces->nb_formats; j++) {
-            if (csp == outlink->incfg.color_spaces->formats[j]) {
-                FFSWAP(int, outlink->incfg.color_spaces->formats[0],
-                       outlink->incfg.color_spaces->formats[j]);
-                break;
-            }
-        }
-    }
-}
-
-static void swap_color_spaces(AVFilterGraph *graph)
-{
-    for (int i = 0; i < graph->nb_filters; i++)
-        swap_color_spaces_on_filter(graph->filters[i]);
-}
-
-static void swap_color_ranges_on_filter(AVFilterContext *filter)
-{
-    AVFilterLink *link = NULL;
-    enum AVColorRange range;
-    int i;
-
-    for (i = 0; i < filter->nb_inputs; i++) {
-        link = filter->inputs[i];
-        if (link->type == AVMEDIA_TYPE_VIDEO &&
-            link->outcfg.color_ranges->nb_formats == 1)
-            break;
-    }
-    if (i == filter->nb_inputs)
-        return;
-
-    range = link->outcfg.color_ranges->formats[0];
-
-    for (i = 0; i < filter->nb_outputs; i++) {
-        AVFilterLink *outlink = filter->outputs[i];
-        if (outlink->type != AVMEDIA_TYPE_VIDEO)
-            continue;
-        for (int j = 0; j < outlink->incfg.color_ranges->nb_formats; j++) {
-            if (range == outlink->incfg.color_ranges->formats[j]) {
-                FFSWAP(int, outlink->incfg.color_ranges->formats[0],
-                       outlink->incfg.color_ranges->formats[j]);
-                break;
-            }
-        }
-    }
-}
-
-static void swap_color_ranges(AVFilterGraph *graph)
-{
-    for (int i = 0; i < graph->nb_filters; i++)
-        swap_color_ranges_on_filter(graph->filters[i]);
 }
 
 #define CH_CENTER_PAIR (AV_CH_FRONT_LEFT_OF_CENTER | AV_CH_FRONT_RIGHT_OF_CENTER)
@@ -1258,10 +1186,6 @@ static int graph_config_formats(AVFilterGraph *graph, void *log_ctx)
     if ((ret = reduce_formats(graph)) < 0)
         return ret;
 
-    /* for video filters, ensure that the best colorspace metadata is selected */
-    swap_color_spaces(graph);
-    swap_color_ranges(graph);
-
     /* for audio filters, ensure the best format, sample rate and channel layout
      * is selected */
     swap_sample_fmts(graph);
@@ -1284,11 +1208,9 @@ static int graph_config_pointers(AVFilterGraph *graph, void *log_ctx)
     for (i = 0; i < graph->nb_filters; i++) {
         f = graph->filters[i];
         for (j = 0; j < f->nb_inputs; j++) {
-            f->inputs[j]->graph     = graph;
             ff_link_internal(f->inputs[j])->age_index  = -1;
         }
         for (j = 0; j < f->nb_outputs; j++) {
-            f->outputs[j]->graph    = graph;
             ff_link_internal(f->outputs[j])->age_index = -1;
         }
         if (!f->nb_outputs) {
@@ -1450,13 +1372,13 @@ int avfilter_graph_request_oldest(AVFilterGraph *graph)
 {
     FFFilterGraph *graphi = fffiltergraph(graph);
     FilterLinkInternal *oldesti = graphi->sink_links[0];
-    AVFilterLink *oldest = &oldesti->l;
+    AVFilterLink *oldest = &oldesti->l.pub;
     int64_t frame_count;
     int r;
 
     while (graphi->sink_links_count) {
         oldesti = graphi->sink_links[0];
-        oldest  = &oldesti->l;
+        oldest  = &oldesti->l.pub;
         if (oldest->dst->filter->activate) {
             r = av_buffersink_get_frame_flags(oldest->dst, NULL,
                                               AV_BUFFERSINK_FLAG_PEEK);
@@ -1480,13 +1402,13 @@ int avfilter_graph_request_oldest(AVFilterGraph *graph)
         return AVERROR_EOF;
     av_assert1(!oldest->dst->filter->activate);
     av_assert1(oldesti->age_index >= 0);
-    frame_count = oldest->frame_count_out;
-    while (frame_count == oldest->frame_count_out) {
+    frame_count = oldesti->l.frame_count_out;
+    while (frame_count == oldesti->l.frame_count_out) {
         r = ff_filter_graph_run_once(graph);
         if (r == AVERROR(EAGAIN) &&
-            !oldest->frame_wanted_out && !oldesti->frame_blocked_in &&
+            !oldesti->frame_wanted_out && !oldesti->frame_blocked_in &&
             !oldesti->status_in)
-            ff_request_frame(oldest);
+            (void)ff_request_frame(oldest);
         else if (r < 0)
             return r;
     }

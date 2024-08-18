@@ -22,6 +22,7 @@
 #include "libavutil/avassert.h"
 #include "libavutil/bprint.h"
 #include "libavutil/intreadwrite.h"
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "libavutil/parseutils.h"
 #include "libavutil/timestamp.h"
@@ -638,6 +639,11 @@ static int concat_parse_script(AVFormatContext *avf)
         }
     }
 
+    if (!file) {
+        ret = AVERROR_INVALIDDATA;
+        goto fail;
+    }
+
     if (file->inpoint != AV_NOPTS_VALUE && file->outpoint != AV_NOPTS_VALUE) {
         if (file->inpoint  > file->outpoint ||
             file->outpoint - (uint64_t)file->inpoint > INT64_MAX)
@@ -679,6 +685,8 @@ static int concat_read_header(AVFormatContext *avf)
             cat->files[i].user_duration = cat->files[i].outpoint - cat->files[i].inpoint;
         }
         cat->files[i].duration = cat->files[i].user_duration;
+        if (time + (uint64_t)cat->files[i].user_duration > INT64_MAX)
+            return AVERROR_INVALIDDATA;
         time += cat->files[i].user_duration;
     }
     if (i == cat->nb_files) {

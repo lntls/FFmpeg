@@ -27,6 +27,7 @@
 #include "libavutil/avstring.h"
 #include "libavutil/intreadwrite.h"
 #include "libavutil/mathematics.h"
+#include "libavutil/mem.h"
 #include "libavutil/parseutils.h"
 #include "libavutil/random_seed.h"
 #include "libavutil/dict.h"
@@ -1428,7 +1429,7 @@ retry:
     cur_auth_type = rt->auth_state.auth_type;
     if ((ret = rtsp_send_cmd_with_content_async(s, method, url, header,
                                                 send_content,
-                                                send_content_length)))
+                                                send_content_length)) < 0)
         return ret;
 
     if ((ret = ff_rtsp_read_reply(s, reply, content_ptr, 0, method) ) < 0)
@@ -1460,6 +1461,8 @@ int ff_rtsp_make_setup_request(AVFormatContext *s, const char *host, int port,
     RTSPMessageHeader reply1, *reply = &reply1;
     char cmd[MAX_URL_SIZE];
     const char *trans_pref;
+
+    memset(&reply1, 0, sizeof(reply1));
 
     if (rt->transport == RTSP_TRANSPORT_RDT)
         trans_pref = "x-pn-tng";
@@ -1575,7 +1578,11 @@ int ff_rtsp_make_setup_request(AVFormatContext *s, const char *host, int port,
         else if (lower_transport == RTSP_LOWER_TRANSPORT_UDP_MULTICAST) {
             snprintf(transport, sizeof(transport) - 1,
                      "%s/UDP;multicast", trans_pref);
+        } else {
+            err = AVERROR(EINVAL);
+            goto fail; // transport would be uninitialized
         }
+
         if (s->oformat) {
             av_strlcat(transport, ";mode=record", sizeof(transport));
         } else if (rt->server_type == RTSP_SERVER_REAL ||
@@ -2070,6 +2077,7 @@ static int udp_read_packet(AVFormatContext *s, RTSPStream **prtsp_st,
                 if (fdsnum != 2) {
                     av_log(s, AV_LOG_ERROR,
                            "Number of fds %d not supported\n", fdsnum);
+                    av_freep(&fds);
                     return AVERROR_INVALIDDATA;
                 }
                 for (fdsidx = 0; fdsidx < fdsnum; fdsidx++) {

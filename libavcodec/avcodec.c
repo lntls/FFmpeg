@@ -54,6 +54,20 @@
  */
 #define FF_MAX_EXTRADATA_SIZE ((1 << 28) - AV_INPUT_BUFFER_PADDING_SIZE)
 
+const SideDataMap ff_sd_global_map[] = {
+    { AV_PKT_DATA_REPLAYGAIN ,                AV_FRAME_DATA_REPLAYGAIN },
+    { AV_PKT_DATA_DISPLAYMATRIX,              AV_FRAME_DATA_DISPLAYMATRIX },
+    { AV_PKT_DATA_SPHERICAL,                  AV_FRAME_DATA_SPHERICAL },
+    { AV_PKT_DATA_STEREO3D,                   AV_FRAME_DATA_STEREO3D },
+    { AV_PKT_DATA_AUDIO_SERVICE_TYPE,         AV_FRAME_DATA_AUDIO_SERVICE_TYPE },
+    { AV_PKT_DATA_MASTERING_DISPLAY_METADATA, AV_FRAME_DATA_MASTERING_DISPLAY_METADATA },
+    { AV_PKT_DATA_CONTENT_LIGHT_LEVEL,        AV_FRAME_DATA_CONTENT_LIGHT_LEVEL },
+    { AV_PKT_DATA_ICC_PROFILE,                AV_FRAME_DATA_ICC_PROFILE },
+    { AV_PKT_DATA_AMBIENT_VIEWING_ENVIRONMENT,AV_FRAME_DATA_AMBIENT_VIEWING_ENVIRONMENT },
+    { AV_PKT_DATA_NB },
+};
+
+
 int avcodec_default_execute(AVCodecContext *c, int (*func)(AVCodecContext *c2, void *arg2), void *arg, int *ret, int count, int size)
 {
     size_t i;
@@ -367,10 +381,13 @@ void avcodec_flush_buffers(AVCodecContext *avctx)
 
     avci->draining      = 0;
     avci->draining_done = 0;
-    av_frame_unref(avci->buffer_frame);
-    av_packet_unref(avci->buffer_pkt);
+    if (avci->buffer_frame)
+        av_frame_unref(avci->buffer_frame);
+    if (avci->buffer_pkt)
+        av_packet_unref(avci->buffer_pkt);
 
-    if (HAVE_THREADS && avctx->active_thread_type & FF_THREAD_FRAME)
+    if (HAVE_THREADS && avctx->active_thread_type & FF_THREAD_FRAME &&
+        !avci->is_frame_mt)
         ff_thread_flush(avctx);
     else if (ffcodec(avctx->codec)->flush)
         ffcodec(avctx->codec)->flush(avctx);
@@ -427,6 +444,7 @@ av_cold void ff_codec_close(AVCodecContext *avctx)
         av_frame_free(&avci->recon_frame);
 
         ff_refstruct_unref(&avci->pool);
+        ff_refstruct_pool_uninit(&avci->progress_frame_pool);
 
         ff_hwaccel_uninit(avctx);
 
@@ -447,6 +465,8 @@ av_cold void ff_codec_close(AVCodecContext *avctx)
         av_freep(&avctx->coded_side_data[i].data);
     av_freep(&avctx->coded_side_data);
     avctx->nb_coded_side_data = 0;
+    av_frame_side_data_free(&avctx->decoded_side_data,
+                            &avctx->nb_decoded_side_data);
 
     av_buffer_unref(&avctx->hw_frames_ctx);
     av_buffer_unref(&avctx->hw_device_ctx);

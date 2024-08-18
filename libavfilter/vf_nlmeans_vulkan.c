@@ -18,6 +18,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "libavutil/mem.h"
 #include "libavutil/random_seed.h"
 #include "libavutil/opt.h"
 #include "vulkan_filter.h"
@@ -563,7 +564,7 @@ static av_cold int init_filter(AVFilterContext *ctx)
     NLMeansVulkanContext *s = ctx->priv;
     FFVulkanContext *vkctx = &s->vkctx;
     const int planes = av_pix_fmt_count_planes(s->vkctx.output_format);
-    FFVkSPIRVCompiler *spv;
+    FFVkSPIRVCompiler *spv = NULL;
     int *offsets_buf;
     int offsets_dispatched = 0, nb_dispatches = 0;
 
